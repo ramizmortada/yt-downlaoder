@@ -19,11 +19,25 @@ export async function GET(req: Request) {
   const stream = new ReadableStream({
     start(controller) {
       fileStream.on('data', (chunk) => controller.enqueue(chunk));
-      fileStream.on('end', () => controller.close());
-      fileStream.on('error', (err) => controller.error(err));
+      fileStream.on('end', () => {
+        controller.close();
+        // Move instead of copy: Delete the temp file to prevent disk buildup
+        setTimeout(() => {
+          try {
+            if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
+          } catch (e) {
+            console.error('Failed to cleanup temp file', e);
+          }
+        }, 1000); // 1s delay to ensure the browser fully saves it
+      });
+      fileStream.on('error', (err) => {
+        controller.error(err);
+        try { if (fs.existsSync(filepath)) fs.unlinkSync(filepath); } catch (e) {}
+      });
     },
     cancel() {
       fileStream.destroy();
+      try { if (fs.existsSync(filepath)) fs.unlinkSync(filepath); } catch (e) {}
     }
   });
 

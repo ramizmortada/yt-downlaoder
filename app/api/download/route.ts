@@ -3,6 +3,8 @@ import { YtDlp } from 'ytdlp-nodejs';
 import path from 'path';
 import os from 'os';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: Request) {
   const { url, isAudio, quality, type } = await req.json();
 
@@ -14,7 +16,6 @@ export async function POST(req: Request) {
       });
 
       try {
-        const info = await ytdlp.getInfoAsync(url);
         // Use a safe temporary directory
         const tempDir = os.tmpdir();
         
@@ -51,8 +52,9 @@ export async function POST(req: Request) {
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-transform',
       'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
     },
   });
 }
