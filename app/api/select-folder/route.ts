@@ -11,11 +11,17 @@ export async function GET() {
       $f = New-Object System.Windows.Forms.FolderBrowserDialog
       $f.Description = "Select Download Folder"
       $f.ShowNewFolderButton = $true
-      if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+      
+      $form = New-Object System.Windows.Forms.Form
+      $form.TopMost = $true
+      $form.WindowState = [System.Windows.Forms.FormWindowState]::Minimized
+      
+      if ($f.ShowDialog($form) -eq [System.Windows.Forms.DialogResult]::OK) {
         $f.SelectedPath
       }
+      $form.Dispose()
     `;
-    const { stdout } = await execPromise(`powershell -NoProfile -Command "${script.replace(/\n/g, ';')}"`);
+    const { stdout } = await execPromise(`powershell -Sta -NoProfile -Command "${script.replace(/\n/g, ';')}"`);
     const folderPath = stdout.trim();
     return NextResponse.json({ folderPath });
   } catch (error: any) {

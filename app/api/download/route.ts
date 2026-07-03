@@ -1,8 +1,10 @@
+import { NextResponse } from 'next/server';
 import { YtDlp } from 'ytdlp-nodejs';
 import path from 'path';
+import os from 'os';
 
 export async function POST(req: Request) {
-  const { url, outputDir, isAudio, quality, type } = await req.json();
+  const { url, isAudio, quality, type } = await req.json();
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -12,13 +14,16 @@ export async function POST(req: Request) {
       });
 
       try {
-        let dl = ytdlp.download(url).output(path.join(outputDir, '%(title)s.%(ext)s'));
+        const info = await ytdlp.getInfoAsync(url);
+        // Use a safe temporary directory
+        const tempDir = os.tmpdir();
+        
+        let dl = ytdlp.download(url).output(path.join(tempDir, '%(title)s.%(ext)s'));
         
         if (isAudio) {
           dl = dl.extractAudio().audioFormat('mp3').audioQuality('0');
         } else {
-          // If no quality specified, use '1080p', type 'mp4'
-          dl = dl.format({ filter: 'mergevideo', quality: quality || '1080p', type: type || 'mp4' });
+          dl = dl.format({ filter: 'mergevideo', quality: `${quality}p`, type: type || 'mp4' });
         }
 
         dl.on('progress', (p) => {
@@ -26,7 +31,15 @@ export async function POST(req: Request) {
         });
 
         const result = await dl.run();
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'finish', data: result })}\n\n`));
+        
+        // Pass the downloaded file path to the frontend
+        if (result.filePaths && result.filePaths.length > 0) {
+          const finalFilePath = result.filePaths[0];
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'finish', file: finalFilePath })}\n\n`));
+        } else {
+          throw new Error('Download failed, no file paths returned.');
+        }
+        
         controller.close();
       } catch (error: any) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', data: error.message })}\n\n`));

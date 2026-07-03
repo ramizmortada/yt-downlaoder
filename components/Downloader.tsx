@@ -6,14 +6,21 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Download, Search, FolderOpen, Music, Video, Loader2, CheckCircle2 } from 'lucide-react';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select';
+import { Search, Music, Video, Loader2, Download, CheckCircle2 } from 'lucide-react';
 
 export default function Downloader() {
   const [url, setUrl] = useState('');
   const [info, setInfo] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [outputDir, setOutputDir] = useState('');
   const [isAudio, setIsAudio] = useState(false);
+  const [quality, setQuality] = useState('1080');
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
@@ -39,22 +46,11 @@ export default function Downloader() {
     }
   };
 
-  const selectFolder = async () => {
-    try {
-      const res = await fetch('/api/select-folder');
-      const data = await res.json();
-      if (data.folderPath) setOutputDir(data.folderPath);
-    } catch (err) {
-      alert('Could not open folder picker.');
-    }
-  };
-
   const startDownload = async () => {
-    if (!outputDir) return alert('Please select a download folder first.');
-    
     setDownloading(true);
     setProgress(0);
-    setStatusText('Starting download...');
+    setStatusText('Starting download to server...');
+    setFinished(false);
 
     try {
       const res = await fetch('/api/download', {
@@ -62,9 +58,8 @@ export default function Downloader() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url,
-          outputDir,
           isAudio,
-          quality: '1080',
+          quality,
           type: 'mp4'
         }),
       });
@@ -94,7 +89,9 @@ export default function Downloader() {
                 setFinished(true);
                 setDownloading(false);
                 setProgress(100);
-                setStatusText('Download Complete!');
+                setStatusText('Download Complete! Prompting save dialog...');
+                
+                window.location.href = `/api/serve?file=${encodeURIComponent(event.file)}`;
               } else if (event.type === 'error') {
                 throw new Error(event.data);
               }
@@ -135,46 +132,54 @@ export default function Downloader() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
           >
-            <Card className="glass p-6 rounded-3xl overflow-hidden relative">
+            <Card className="glass p-6 rounded-3xl overflow-hidden relative border-white/10">
               <div className="flex flex-col md:flex-row gap-6">
-                <div className="w-full md:w-1/3 aspect-video md:aspect-square relative rounded-xl overflow-hidden bg-black/50">
+                <div className="w-full md:w-1/3 aspect-video md:aspect-square relative rounded-xl overflow-hidden bg-black/50 border border-white/5 shadow-inner">
                   <img src={info.thumbnail} alt={info.title} className="w-full h-full object-cover" />
                 </div>
                 
                 <div className="flex-1 flex flex-col justify-between">
                   <div>
                     <h2 className="text-xl font-bold line-clamp-2 leading-tight mb-2 text-white">{info.title}</h2>
-                    <p className="text-muted-foreground text-sm">{info.channel || info.uploader}</p>
+                    <p className="text-muted-foreground text-sm font-medium">{info.channel || info.uploader}</p>
                   </div>
 
                   <div className="flex flex-col gap-4 mt-6">
-                    <div className="flex items-center gap-2">
-                      <Button variant={!isAudio ? 'default' : 'secondary'} className="rounded-xl flex-1" onClick={() => setIsAudio(false)}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button variant={!isAudio ? 'default' : 'secondary'} className="rounded-xl flex-1 font-semibold" onClick={() => setIsAudio(false)}>
                         <Video className="w-4 h-4 mr-2" /> Video
                       </Button>
-                      <Button variant={isAudio ? 'default' : 'secondary'} className="rounded-xl flex-1" onClick={() => setIsAudio(true)}>
+                      <Button variant={isAudio ? 'default' : 'secondary'} className="rounded-xl flex-1 font-semibold" onClick={() => setIsAudio(true)}>
                         <Music className="w-4 h-4 mr-2" /> Audio
                       </Button>
-                    </div>
-
-                    <div className="flex gap-2 items-center">
-                      <Input 
-                        value={outputDir} 
-                        readOnly 
-                        placeholder="Select download folder..." 
-                        className="bg-black/30 border-white/10 rounded-xl"
-                      />
-                      <Button onClick={selectFolder} variant="outline" className="rounded-xl border-white/10 hover:bg-white/10">
-                        <FolderOpen className="w-4 h-4" />
-                      </Button>
+                      
+                      <AnimatePresence>
+                        {!isAudio && (
+                          <motion.div initial={{ opacity: 0, width: 0 }} animate={{ opacity: 1, width: 'auto' }} exit={{ opacity: 0, width: 0 }} className="min-w-[120px]">
+                            <Select value={quality} onValueChange={setQuality}>
+                              <SelectTrigger className="h-10 rounded-xl bg-black/30 border-white/10 font-medium">
+                                <SelectValue placeholder="Quality" />
+                              </SelectTrigger>
+                              <SelectContent className="bg-black/90 border-white/10 backdrop-blur-xl">
+                                <SelectItem value="2160">2160p (4K) {info.sizes?.['2160'] ? `~${(info.sizes['2160'] / 1024 / 1024).toFixed(1)}MB` : ''}</SelectItem>
+                                <SelectItem value="1440">1440p (2K) {info.sizes?.['1440'] ? `~${(info.sizes['1440'] / 1024 / 1024).toFixed(1)}MB` : ''}</SelectItem>
+                                <SelectItem value="1080">1080p (FHD) {info.sizes?.['1080'] ? `~${(info.sizes['1080'] / 1024 / 1024).toFixed(1)}MB` : ''}</SelectItem>
+                                <SelectItem value="720">720p (HD) {info.sizes?.['720'] ? `~${(info.sizes['720'] / 1024 / 1024).toFixed(1)}MB` : ''}</SelectItem>
+                                <SelectItem value="480">480p {info.sizes?.['480'] ? `~${(info.sizes['480'] / 1024 / 1024).toFixed(1)}MB` : ''}</SelectItem>
+                                <SelectItem value="360">360p {info.sizes?.['360'] ? `~${(info.sizes['360'] / 1024 / 1024).toFixed(1)}MB` : ''}</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
 
                     <Button 
                       onClick={startDownload} 
-                      disabled={downloading || !outputDir}
-                      className="w-full rounded-xl h-12 text-lg font-medium bg-white text-black hover:bg-neutral-200 transition-colors"
+                      disabled={downloading}
+                      className="w-full rounded-xl h-12 text-lg font-bold bg-white text-black hover:bg-neutral-200 transition-colors shadow-lg shadow-white/10"
                     >
-                      {downloading ? 'Downloading...' : 'Download'} <Download className="w-5 h-5 ml-2" />
+                      {downloading ? 'Processing...' : 'Download'} <Download className="w-5 h-5 ml-2" />
                     </Button>
                   </div>
                 </div>
@@ -182,17 +187,17 @@ export default function Downloader() {
 
               {downloading && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-6 space-y-2">
-                  <div className="flex justify-between text-sm text-primary font-medium">
+                  <div className="flex justify-between text-sm text-primary font-medium tracking-wide">
                     <span>{statusText}</span>
                     <span>{progress.toFixed(1)}%</span>
                   </div>
-                  <Progress value={progress} className="h-2 rounded-full bg-black/50" />
+                  <Progress value={progress} className="h-2 rounded-full bg-black/50 border border-white/5" />
                 </motion.div>
               )}
 
               {finished && (
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-6 flex items-center justify-center gap-2 text-emerald-400 font-medium bg-emerald-500/10 p-4 rounded-xl">
-                  <CheckCircle2 className="w-5 h-5" /> Downloaded successfully to your folder!
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-6 flex items-center justify-center gap-2 text-emerald-400 font-medium bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.1)]">
+                  <CheckCircle2 className="w-5 h-5" /> Ready! Serving file to browser...
                 </motion.div>
               )}
             </Card>
