@@ -1,0 +1,295 @@
+'use client';
+
+import React, { useEffect, useRef, useState } from 'react';
+import { Play, Pause, Clock } from 'lucide-react';
+import { TimeValue } from './TimeSegmentPicker';
+
+interface YouTubePreviewPlayerProps {
+  videoId: string;
+  onSetStart: (val: TimeValue) => void;
+  onSetEnd: (val: TimeValue) => void;
+  loopRange?: { start: number; end: number } | null;
+}
+
+declare global {
+  interface Window {
+    YT: any;
+    onYouTubeIframeAPIReady: any;
+  }
+}
+
+const formatDisplayTime = (totalSeconds: number): string => {
+  if (isNaN(totalSeconds) || totalSeconds < 0) return '00:00';
+  const hrs = Math.floor(totalSeconds / 3600);
+  const mins = Math.floor((totalSeconds % 3600) / 60);
+  const secs = Math.floor(totalSeconds % 60);
+  
+  if (hrs > 0) {
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+};
+
+export default function YouTubePreviewPlayer({ videoId, onSetStart, onSetEnd, loopRange }: YouTubePreviewPlayerProps) {
+  const playerRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const intervalRef = useRef<any>(null);
+
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isSeeking, setIsSeeking] = useState(false);
+
+  // Trigger loop start when loopRange is set
+  useEffect(() => {
+    if (loopRange && playerRef.current && typeof playerRef.current.seekTo === 'function') {
+      try {
+        playerRef.current.seekTo(loopRange.start, true);
+        playerRef.current.playVideo();
+        setIsPlaying(true);
+      } catch (e) {}
+    }
+  }, [loopRange]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const createPlayer = () => {
+      if (!isMounted || !containerRef.current) return;
+
+      containerRef.current.innerHTML = '';
+      const playerDiv = document.createElement('div');
+      playerDiv.id = `yt-player-${videoId}`;
+      containerRef.current.appendChild(playerDiv);
+
+      playerRef.current = new window.YT.Player(playerDiv.id, {
+        videoId: videoId,
+        playerVars: {
+          autoplay: 0,
+          controls: 0,
+          modestbranding: 1,
+          rel: 0,
+          iv_load_policy: 3,
+          disablekb: 1,
+          fs: 0,
+          enablejsapi: 1,
+          origin: typeof window !== 'undefined' ? window.location.origin : '',
+        },
+        events: {
+          onReady: (event: any) => {
+            if (isMounted) {
+              setDuration(event.target.getDuration() || 0);
+            }
+          },
+          onStateChange: (event: any) => {
+            if (isMounted && window.YT) {
+              if (event.data === window.YT.PlayerState.PLAYING) {
+                setIsPlaying(true);
+              } else if (
+                event.data === window.YT.PlayerState.PAUSED ||
+                event.data === window.YT.PlayerState.ENDED
+              ) {
+                setIsPlaying(false);
+              }
+            }
+          },
+        },
+      });
+    };
+
+    if (window.YT && window.YT.Player) {
+      createPlayer();
+    } else {
+      if (!document.getElementById('yt-iframe-api-script')) {
+        const tag = document.createElement('script');
+        tag.id = 'yt-iframe-api-script';
+        tag.src = 'https://www.youtube.com/iframe_api';
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
+      }
+
+      const prevCallback = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        if (prevCallback) prevCallback();
+        createPlayer();
+      };
+    }
+
+    return () => {
+      isMounted = false;
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (playerRef.current && typeof playerRef.current.destroy === 'function') {
+        try {
+          playerRef.current.destroy();
+        } catch (e) {}
+      }
+    };
+  }, [videoId]);
+
+  // Update current time on interval when playing and handle loop boundaries
+  useEffect(() => {
+    if (isPlaying && !isSeeking) {
+      intervalRef.current = setInterval(() => {
+        if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
+          const cur = playerRef.current.getCurrentTime();
+          setCurrentTime(cur);
+          if (!duration && typeof playerRef.current.getDuration === 'function') {
+            setDuration(playerRef.current.getDuration());
+          }
+
+          // Handle looping boundary
+          if (loopRange && loopRange.end > loopRange.start) {
+            if (cur >= loopRange.end - 0.2 || cur < loopRange.start) {
+              playerRef.current.seekTo(loopRange.start, true);
+              playerRef.current.playVideo();
+            }
+          }
+        }
+      }, 150);
+    } else {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    }
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [isPlaying, isSeeking, duration, loopRange]);
+
+  const togglePlayPause = () => {
+    if (!playerRef.current) return;
+    try {
+      if (isPlaying) {
+        playerRef.current.pauseVideo();
+        setIsPlaying(false);
+      } else {
+        playerRef.current.playVideo();
+        setIsPlaying(true);
+      }
+    } catch (e) {
+      console.error('Failed to toggle play/pause:', e);
+    }
+  };
+
+  const handleSeek = (newTimeSec: number) => {
+    setCurrentTime(newTimeSec);
+    if (playerRef.current && typeof playerRef.current.seekTo === 'function') {
+      try {
+        playerRef.current.seekTo(newTimeSec, true);
+      } catch (e) {}
+    }
+  };
+
+  const secondsToTimeValue = (secs: number): TimeValue => {
+    const totalSeconds = Math.max(0, Math.floor(secs));
+    const hrs = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const s = Math.floor(totalSeconds % 60);
+
+    return {
+      hours: hrs.toString().padStart(2, '0'),
+      minutes: mins.toString().padStart(2, '0'),
+      seconds: s.toString().padStart(2, '0'),
+    };
+  };
+
+  const handleSetStart = () => {
+    let cur = currentTime;
+    if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
+      try {
+        cur = playerRef.current.getCurrentTime();
+      } catch (e) {}
+    }
+    onSetStart(secondsToTimeValue(cur));
+  };
+
+  const handleSetEnd = () => {
+    let cur = currentTime;
+    if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
+      try {
+        cur = playerRef.current.getCurrentTime();
+      } catch (e) {}
+    }
+    onSetEnd(secondsToTimeValue(cur));
+  };
+
+  return (
+    <div className="flex flex-col gap-2.5 w-full">
+      {/* Video Container with CSS cropping to hide top title bar and bottom YouTube overlays */}
+      <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black border border-zinc-800 shadow-md group">
+        <div ref={containerRef} className="absolute inset-0 overflow-hidden [&>iframe]:w-full [&>iframe]:h-[140%] [&>iframe]:-mt-[10%] [&>iframe]:border-0 [&>iframe]:pointer-events-none [&>iframe]:scale-105" />
+
+        {/* Invisible Click-to-toggle overlay */}
+        <button
+          type="button"
+          onClick={togglePlayPause}
+          className="absolute inset-0 w-full h-full cursor-pointer bg-transparent z-10"
+          aria-label="Toggle play pause"
+        />
+      </div>
+
+      {/* Custom Control Bar */}
+      <div className="flex flex-col gap-2 bg-zinc-900 border border-zinc-800 rounded-xl p-2.5">
+        {/* Scrub Slider */}
+        <div className="relative w-full flex items-center h-3 group">
+          <input
+            type="range"
+            min={0}
+            max={duration || 100}
+            step={0.1}
+            value={currentTime}
+            onMouseDown={() => setIsSeeking(true)}
+            onTouchStart={() => setIsSeeking(true)}
+            onChange={(e) => setCurrentTime(parseFloat(e.target.value))}
+            onMouseUp={(e) => {
+              setIsSeeking(false);
+              handleSeek(parseFloat((e.target as HTMLInputElement).value));
+            }}
+            onTouchEnd={(e) => {
+              setIsSeeking(false);
+              handleSeek(parseFloat((e.target as HTMLInputElement).value));
+            }}
+            className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-400 focus:outline-none z-10"
+          />
+        </div>
+
+        {/* Play/Pause & Time & Capture Actions */}
+        <div className="flex items-center justify-between gap-2">
+          {/* Play/Pause Toggle & Time Display */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={togglePlayPause}
+              className="w-7 h-7 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-100 flex items-center justify-center transition-colors"
+            >
+              {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current ml-0.5" />}
+            </button>
+
+            <span className="text-[11px] font-mono text-zinc-300 font-medium">
+              {formatDisplayTime(currentTime)} <span className="text-zinc-600">/</span> {formatDisplayTime(duration)}
+            </span>
+          </div>
+
+          {/* Quick Timestamp Capture Buttons */}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={handleSetStart}
+              className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/60 text-[10px] font-semibold text-zinc-200 flex items-center gap-1 transition-colors"
+            >
+              <Clock className="w-3 h-3 text-amber-400" />
+              <span>Set Start</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleSetEnd}
+              className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/60 text-[10px] font-semibold text-zinc-200 flex items-center gap-1 transition-colors"
+            >
+              <Clock className="w-3 h-3 text-amber-400" />
+              <span>Set End</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

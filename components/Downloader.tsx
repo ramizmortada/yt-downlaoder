@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Search, Music, Video, Loader2, Download, CheckCircle2, ArrowRight, Scissors, AlertCircle } from 'lucide-react';
+import { Search, Music, Video, Loader2, Download, CheckCircle2, ArrowRight, Scissors, AlertCircle, Repeat } from 'lucide-react';
 import TimeSegmentPicker, { TimeValue } from './TimeSegmentPicker';
+import YouTubePreviewPlayer from './YouTubePreviewPlayer';
 
 const timeValueToSeconds = (val: TimeValue): number => {
   const h = parseInt(val.hours || '0', 10);
@@ -37,15 +38,18 @@ export default function Downloader() {
   const [statusText, setStatusText] = useState('');
   const [abortController, setAbortController] = useState<AbortController | null>(null);
 
-  // Time segment clipping state
-  const [isClipping, setIsClipping] = useState(false);
+  // Time segment values
   const [startValue, setStartValue] = useState<TimeValue>({ hours: '00', minutes: '00', seconds: '00' });
   const [endValue, setEndValue] = useState<TimeValue>({ hours: '00', minutes: '00', seconds: '00' });
+  const [isLoopingClip, setIsLoopingClip] = useState(false);
 
-  // Calculate clipping validation
+  // Calculate clipping state and validation
   const startSeconds = timeValueToSeconds(startValue);
   const endSeconds = timeValueToSeconds(endValue);
   const totalDuration = typeof info?.duration === 'number' ? info.duration : null;
+
+  // Clipping is active if start > 0 OR end is set below total duration
+  const isClipping = startSeconds > 0 || (totalDuration !== null ? (endSeconds > 0 && endSeconds < totalDuration) : endSeconds > 0);
 
   let clippingError: string | null = null;
   let isStartInvalid = false;
@@ -58,12 +62,16 @@ export default function Downloader() {
     } else if (totalDuration !== null && endSeconds > totalDuration) {
       clippingError = `End time (${formatSecondsToHHMMSS(endSeconds)}) exceeds video duration (${formatSecondsToHHMMSS(totalDuration)})`;
       isEndInvalid = true;
-    } else if (startSeconds >= endSeconds) {
+    } else if (endSeconds > 0 && startSeconds >= endSeconds) {
       clippingError = `Start time must be earlier than End time`;
       isStartInvalid = true;
       isEndInvalid = true;
     }
   }
+
+  const loopRange = (isLoopingClip && !clippingError && endSeconds > startSeconds)
+    ? { start: startSeconds, end: endSeconds }
+    : null;
 
   // Pre-fill end time when video duration is available
   useEffect(() => {
@@ -80,6 +88,7 @@ export default function Downloader() {
   }, [info]);
 
   const handleResetClipping = () => {
+    setIsLoopingClip(false);
     setStartValue({ hours: '00', minutes: '00', seconds: '00' });
     if (info?.duration && typeof info.duration === 'number') {
       const hrs = Math.floor(info.duration / 3600);
@@ -95,7 +104,13 @@ export default function Downloader() {
     }
   };
 
+  const handleSetStartFromPlayer = (val: TimeValue) => {
+    setStartValue(val);
+  };
 
+  const handleSetEndFromPlayer = (val: TimeValue) => {
+    setEndValue(val);
+  };
 
   // Load from local storage on mount
   useEffect(() => {
@@ -235,7 +250,7 @@ export default function Downloader() {
   };
 
   return (
-    <div className="w-full max-w-lg mx-auto flex flex-col gap-3 max-h-full justify-center min-h-0">
+    <div className={`w-full transition-all duration-300 ${info ? 'max-w-4xl' : 'max-w-lg'} mx-auto flex flex-col gap-3 max-h-full justify-center min-h-0`}>
       {/* Search Section */}
       <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="relative flex items-center shrink-0">
         <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
@@ -268,20 +283,26 @@ export default function Downloader() {
             transition={{ type: "spring", stiffness: 250, damping: 25 }}
             className="flex-1 overflow-hidden flex flex-col min-h-0"
           >
-            <Card className="p-0 gap-0 rounded-2xl sm:rounded-3xl overflow-hidden bg-zinc-950 border border-zinc-800 shadow-xl flex flex-col max-h-full shrink min-h-0">
+            <Card className="p-3.5 sm:p-4 gap-4 rounded-2xl sm:rounded-3xl overflow-hidden bg-zinc-950 border border-zinc-800 shadow-xl flex flex-col md:flex-row max-h-full shrink min-h-0 overflow-y-auto">
               
-              {/* Header: Thumbnail */}
-              <div className="w-full h-28 sm:h-36 shrink-0 relative bg-zinc-900 border-b border-zinc-800">
-                <img src={info.thumbnail} alt={info.title} className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-transparent pointer-events-none" />
-                <div className="absolute bottom-2.5 left-4 right-4">
-                  <h2 className="text-base sm:text-lg font-semibold line-clamp-1 leading-tight text-zinc-100">{info.title}</h2>
-                  <p className="text-zinc-400 text-xs font-medium mt-0.5">{info.channel || info.uploader}</p>
+              {/* Left Column: YouTube Preview Player & Timestamp Capture */}
+              {info.id && (
+                <div className="w-full md:w-1/2 flex flex-col gap-2.5 shrink-0">
+                  <div className="flex flex-col">
+                    <h2 className="text-sm sm:text-base font-semibold line-clamp-1 leading-tight text-zinc-100">{info.title}</h2>
+                    <p className="text-zinc-400 text-xs font-medium mt-0.5">{info.channel || info.uploader}</p>
+                  </div>
+                  <YouTubePreviewPlayer
+                    videoId={info.id}
+                    onSetStart={handleSetStartFromPlayer}
+                    onSetEnd={handleSetEndFromPlayer}
+                    loopRange={loopRange}
+                  />
                 </div>
-              </div>
-              
-              {/* Body: Controls */}
-              <div className="p-3.5 sm:p-4 flex flex-col gap-3.5 overflow-y-auto shrink min-h-0 scrollbar-none">
+              )}
+
+              {/* Right Column: Controls & Download Options */}
+              <div className="w-full md:w-1/2 flex flex-col gap-3.5 overflow-y-auto shrink min-h-0 scrollbar-none">
                 
                 {/* Format Toggle */}
                 <div className="flex bg-zinc-900 border border-zinc-800 rounded-xl p-1 w-full shrink-0">
@@ -340,54 +361,61 @@ export default function Downloader() {
                   )}
                 </AnimatePresence>
 
-                {/* Segment Clipping Section */}
+                {/* Segment Clipping Section (Always Visible) */}
                 <div className="w-full flex flex-col gap-2 shrink-0 border-t border-zinc-800/80 pt-3">
                   <div className="flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => setIsClipping(!isClipping)}
-                      className="flex items-center gap-1.5 text-xs font-semibold text-zinc-300 hover:text-white transition-colors"
-                    >
-                      <Scissors className={`w-3.5 h-3.5 ${isClipping ? 'text-amber-400' : 'text-zinc-400'}`} />
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-300">
+                      <Scissors className={`w-3.5 h-3.5 ${isClipping ? 'text-amber-400' : 'text-zinc-500'}`} />
                       <span>Crop / Clip Segment</span>
-                      {isClipping && <span className="text-[10px] bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded font-mono">ON</span>}
-                    </button>
-                    {isClipping && (
+                      {isClipping ? (
+                        <span className="text-[10px] bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded font-mono font-semibold">CLIP ACTIVE</span>
+                      ) : (
+                        <span className="text-[10px] text-zinc-500 font-mono">FULL VIDEO</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={handleResetClipping}
-                        className="text-[10px] text-zinc-500 hover:text-zinc-300 underline transition-colors"
+                        onClick={() => setIsLoopingClip(!isLoopingClip)}
+                        disabled={Boolean(clippingError)}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-semibold flex items-center gap-1 transition-all disabled:opacity-50 ${
+                          isLoopingClip 
+                            ? 'bg-amber-400 text-black shadow-sm font-bold' 
+                            : 'bg-zinc-900 border border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:text-white'
+                        }`}
                       >
-                        Reset
+                        <Repeat className="w-3 h-3" />
+                        <span>{isLoopingClip ? 'Looping' : 'Loop Segment'}</span>
                       </button>
-                    )}
+
+                      {isClipping && (
+                        <button
+                          type="button"
+                          onClick={handleResetClipping}
+                          className="text-[10px] text-zinc-400 hover:text-zinc-200 underline transition-colors"
+                        >
+                          Reset
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  <AnimatePresence>
-                    {isClipping && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="flex flex-col gap-2 overflow-hidden"
-                      >
-                        <div className="grid grid-cols-2 gap-2">
-                          <TimeSegmentPicker label="Start Time" value={startValue} onChange={setStartValue} hasError={isStartInvalid} />
-                          <TimeSegmentPicker label="End Time" value={endValue} onChange={setEndValue} hasError={isEndInvalid} />
-                        </div>
-                        {clippingError ? (
-                          <div className="flex items-center gap-1.5 text-[11px] text-red-400 bg-red-950/40 border border-red-900/60 rounded-lg p-2 font-medium">
-                            <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-400" />
-                            <span>{clippingError}</span>
-                          </div>
-                        ) : (
-                          <p className="text-[10px] text-zinc-500 ml-1">
-                            Click directly on <span className="text-zinc-300 font-semibold font-mono">MM</span> or <span className="text-zinc-300 font-semibold font-mono">SS</span> to edit. Arrow keys adjust values.
-                          </p>
-                        )}
-                      </motion.div>
+                  <div className="flex flex-col gap-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <TimeSegmentPicker label="Start Time" value={startValue} onChange={setStartValue} hasError={isStartInvalid} />
+                      <TimeSegmentPicker label="End Time" value={endValue} onChange={setEndValue} hasError={isEndInvalid} />
+                    </div>
+                    {clippingError ? (
+                      <div className="flex items-center gap-1.5 text-[11px] text-red-400 bg-red-950/40 border border-red-900/60 rounded-lg p-2 font-medium">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-400" />
+                        <span>{clippingError}</span>
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-zinc-500 ml-1">
+                        Edit Start or End time to crop segment. Arrow keys adjust values.
+                      </p>
                     )}
-                  </AnimatePresence>
+                  </div>
                 </div>
 
                 {/* Download Button */}
