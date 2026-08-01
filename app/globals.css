@@ -80,4 +80,8 @@
   body {
     @apply bg-[#09090b] text-foreground font-sans min-h-screen flex flex-col items-center justify-center p-4 selection:bg-blue-600 selection:text-white;
   }
+  button:focus-visible, button:focus {
+    outline: none !important;
+    box-shadow: none !important;
+  }
 }
