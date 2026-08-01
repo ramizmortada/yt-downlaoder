@@ -158,6 +158,44 @@ export default function YouTubePreviewPlayer({ videoId, onSetStart, onSetEnd, lo
     };
   }, [isPlaying, isSeeking, duration, loopRange]);
 
+  // Global keyboard shortcuts for video seeking
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input or textarea
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') {
+        return;
+      }
+
+      if (!playerRef.current || typeof playerRef.current.getCurrentTime !== 'function') return;
+
+      let seekAmount = 0;
+      if (e.key === 'ArrowLeft') {
+        seekAmount = e.shiftKey ? -30 : -5;
+      } else if (e.key === 'ArrowRight') {
+        seekAmount = e.shiftKey ? 30 : 5;
+      } else if (e.key === 'd' || e.key === 'D') {
+        seekAmount = -1;
+      } else if (e.key === 'f' || e.key === 'F') {
+        seekAmount = 1;
+      }
+
+      if (seekAmount !== 0) {
+        e.preventDefault();
+        const current = playerRef.current.getCurrentTime();
+        let next = current + seekAmount;
+        if (next < 0) next = 0;
+        if (duration && next > duration) next = duration;
+        
+        playerRef.current.seekTo(next, true);
+        setCurrentTime(next);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [duration]);
+
   const togglePlayPause = () => {
     if (!playerRef.current) return;
     try {

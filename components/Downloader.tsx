@@ -396,14 +396,14 @@ export default function Downloader() {
                         type="button"
                         onClick={() => setIsLoopingClip(!isLoopingClip)}
                         disabled={Boolean(clippingError)}
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-semibold flex items-center gap-1 transition-all disabled:opacity-50 ${
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-semibold flex items-center gap-1 transition-colors disabled:opacity-50 border ${
                           isLoopingClip 
-                            ? 'bg-amber-400 text-black shadow-sm font-bold' 
-                            : 'bg-zinc-900 border border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:text-white'
+                            ? 'bg-amber-400 text-black border-transparent shadow-sm' 
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:text-white'
                         }`}
                       >
                         <Repeat className="w-3 h-3" />
-                        <span>{isLoopingClip ? 'Looping' : 'Loop Segment'}</span>
+                        <span>Loop Segment</span>
                       </button>
 
                       {isClipping && (
@@ -420,8 +420,26 @@ export default function Downloader() {
 
                   <div className="flex flex-col gap-2">
                     <div className="grid grid-cols-2 gap-2">
-                      <TimeSegmentPicker label="Start Time" value={startValue} onChange={setStartValue} hasError={isStartInvalid} />
-                      <TimeSegmentPicker label="End Time" value={endValue} onChange={setEndValue} hasError={isEndInvalid} />
+                      <TimeSegmentPicker 
+                        label="Start Time" 
+                        value={startValue} 
+                        onChange={setStartValue} 
+                        hasError={isStartInvalid} 
+                        idPrefix="start"
+                        onNavigateBoundary={(dir) => {
+                          if (dir === 'right') document.getElementById('end-hours')?.focus();
+                        }}
+                      />
+                      <TimeSegmentPicker 
+                        label="End Time" 
+                        value={endValue} 
+                        onChange={setEndValue} 
+                        hasError={isEndInvalid} 
+                        idPrefix="end"
+                        onNavigateBoundary={(dir) => {
+                          if (dir === 'left') document.getElementById('start-seconds')?.focus();
+                        }}
+                      />
                     </div>
                     {clippingError ? (
                       <div className="flex items-center gap-1.5 text-[11px] text-red-400 bg-red-950/40 border border-red-900/60 rounded-lg p-2 font-medium">

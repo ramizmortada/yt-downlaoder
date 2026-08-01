@@ -13,9 +13,11 @@ interface TimeSegmentPickerProps {
   value: TimeValue;
   onChange: (val: TimeValue) => void;
   hasError?: boolean;
+  idPrefix?: string;
+  onNavigateBoundary?: (direction: 'left' | 'right') => void;
 }
 
-export default function TimeSegmentPicker({ label, value, onChange, hasError }: TimeSegmentPickerProps) {
+export default function TimeSegmentPicker({ label, value, onChange, hasError, idPrefix, onNavigateBoundary }: TimeSegmentPickerProps) {
   const hoursRef = useRef<HTMLInputElement>(null);
   const minutesRef = useRef<HTMLInputElement>(null);
   const secondsRef = useRef<HTMLInputElement>(null);
@@ -68,6 +70,32 @@ export default function TimeSegmentPicker({ label, value, onChange, hasError }: 
     } else if (e.key === 'Backspace' && !value[field] && field !== 'hours') {
       if (field === 'seconds') minutesRef.current?.select();
       else if (field === 'minutes') hoursRef.current?.select();
+    } else if (e.key === 'ArrowLeft') {
+      if (e.currentTarget.selectionStart === 0) {
+        if (field === 'seconds') {
+          e.preventDefault();
+          minutesRef.current?.select();
+        } else if (field === 'minutes') {
+          e.preventDefault();
+          hoursRef.current?.select();
+        } else if (field === 'hours' && onNavigateBoundary) {
+          e.preventDefault();
+          onNavigateBoundary('left');
+        }
+      }
+    } else if (e.key === 'ArrowRight') {
+      if (e.currentTarget.selectionEnd === e.currentTarget.value.length) {
+        if (field === 'hours') {
+          e.preventDefault();
+          minutesRef.current?.select();
+        } else if (field === 'minutes') {
+          e.preventDefault();
+          secondsRef.current?.select();
+        } else if (field === 'seconds' && onNavigateBoundary) {
+          e.preventDefault();
+          onNavigateBoundary('right');
+        }
+      }
     }
   };
 
@@ -82,6 +110,7 @@ export default function TimeSegmentPicker({ label, value, onChange, hasError }: 
         {/* Hours */}
         <div className="flex flex-col items-center">
           <input
+            id={idPrefix ? `${idPrefix}-hours` : undefined}
             ref={hoursRef}
             type="text"
             inputMode="numeric"
@@ -101,6 +130,7 @@ export default function TimeSegmentPicker({ label, value, onChange, hasError }: 
         {/* Minutes */}
         <div className="flex flex-col items-center">
           <input
+            id={idPrefix ? `${idPrefix}-minutes` : undefined}
             ref={minutesRef}
             type="text"
             inputMode="numeric"
@@ -120,6 +150,7 @@ export default function TimeSegmentPicker({ label, value, onChange, hasError }: 
         {/* Seconds */}
         <div className="flex flex-col items-center">
           <input
+            id={idPrefix ? `${idPrefix}-seconds` : undefined}
             ref={secondsRef}
             type="text"
             inputMode="numeric"
