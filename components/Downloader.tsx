@@ -308,6 +308,7 @@ export default function Downloader() {
                     onSetStart={handleSetStartFromPlayer}
                     onSetEnd={handleSetEndFromPlayer}
                     loopRange={loopRange}
+                    videoAspectRatio={info.width && info.height ? info.width / info.height : 16/9}
                   />
                 </div>
               )}

@@ -9,6 +9,7 @@ interface YouTubePreviewPlayerProps {
   onSetStart: (val: TimeValue) => void;
   onSetEnd: (val: TimeValue) => void;
   loopRange?: { start: number; end: number } | null;
+  videoAspectRatio?: number;
 }
 
 declare global {
@@ -30,7 +31,7 @@ const formatDisplayTime = (totalSeconds: number): string => {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
-export default function YouTubePreviewPlayer({ videoId, onSetStart, onSetEnd, loopRange }: YouTubePreviewPlayerProps) {
+export default function YouTubePreviewPlayer({ videoId, onSetStart, onSetEnd, loopRange, videoAspectRatio = 16/9 }: YouTubePreviewPlayerProps) {
   const playerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<any>(null);
@@ -39,6 +40,9 @@ export default function YouTubePreviewPlayer({ videoId, onSetStart, onSetEnd, lo
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isSeeking, setIsSeeking] = useState(false);
+
+  const isVertical = videoAspectRatio < 1;
+  const iframeWidthPercent = isVertical ? videoAspectRatio * (9 / 16) * 100 : 100;
 
   // Seek to start position when loopRange changes without auto-playing
   useEffect(() => {
@@ -215,7 +219,27 @@ export default function YouTubePreviewPlayer({ videoId, onSetStart, onSetEnd, lo
     <div className="flex flex-col gap-2.5 w-full">
       {/* Video Container with CSS cropping to hide top title bar and bottom YouTube overlays */}
       <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black border border-zinc-800 shadow-md group">
-        <div ref={containerRef} className="absolute inset-0 overflow-hidden [&>iframe]:w-full [&>iframe]:h-[140%] [&>iframe]:-mt-[10%] [&>iframe]:border-0 [&>iframe]:pointer-events-none [&>iframe]:scale-105" />
+        <div 
+          ref={containerRef} 
+          className="absolute overflow-hidden [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:border-0 [&>iframe]:pointer-events-none"
+          style={
+            isVertical
+              ? {
+                  width: `${iframeWidthPercent}%`,
+                  height: '130%',
+                  left: '50%',
+                  top: '-15%',
+                  transform: 'translateX(-50%)',
+                }
+              : {
+                  width: '100%',
+                  height: '140%',
+                  left: '0',
+                  top: '-10%',
+                  transform: 'scale(1.05)',
+                }
+          }
+        />
 
         {/* Invisible Click-to-toggle overlay */}
         <button
