@@ -14,12 +14,13 @@ export async function POST(req: Request) {
     const sizes: Record<string, number> = {};
     let bestAudioSize = 0;
     
-    if (info.formats) {
+    const videoInfo = info as any;
+    if (videoInfo.formats && Array.isArray(videoInfo.formats)) {
       // Find best audio size
-      const audioFormats = info.formats.filter(f => f.acodec !== 'none' && f.vcodec === 'none');
+      const audioFormats = videoInfo.formats.filter((f: any) => f.acodec !== 'none' && f.vcodec === 'none');
       if (audioFormats.length > 0) {
         // Sort by quality/bitrate if possible, or just size
-        const bestAudio = audioFormats.reduce((prev, current) => {
+        const bestAudio = audioFormats.reduce((prev: any, current: any) => {
           const s1 = prev.filesize || prev.filesize_approx || 0;
           const s2 = current.filesize || current.filesize_approx || 0;
           return s1 > s2 ? prev : current;
@@ -34,11 +35,11 @@ export async function POST(req: Request) {
       
       for (const height of targetHeights) {
         // Get all video formats that match this height roughly (or exact)
-        const vFormats = info.formats.filter(f => f.vcodec !== 'none' && f.height === height);
+        const vFormats = videoInfo.formats.filter((f: any) => f.vcodec !== 'none' && f.height === height);
         
         if (vFormats.length > 0) {
           // Prefer mp4/avc or best size
-          const bestVideo = vFormats.reduce((prev, current) => {
+          const bestVideo = vFormats.reduce((prev: any, current: any) => {
             const s1 = prev.filesize || prev.filesize_approx || 0;
             const s2 = current.filesize || current.filesize_approx || 0;
             return s1 > s2 ? prev : current;

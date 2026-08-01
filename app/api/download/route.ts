@@ -24,7 +24,7 @@ export async function POST(req: Request) {
         if (isAudio) {
           dl = dl.extractAudio().audioFormat('mp3').audioQuality('0');
         } else {
-          dl = dl.format({ filter: 'mergevideo', quality: `${quality}p`, type: type || 'mp4' });
+          dl = dl.format({ filter: 'mergevideo', quality: `${quality}p` as any, type: type || 'mp4' });
         }
 
         dl.on('progress', (p) => {
