@@ -73,17 +73,28 @@ export default function Downloader() {
     ? { start: startSeconds, end: endSeconds }
     : null;
 
-  // Pre-fill end time when video duration is available
+  // Pre-fill end time and auto-select highest available quality option
   useEffect(() => {
-    if (info?.duration && typeof info.duration === 'number') {
-      const hrs = Math.floor(info.duration / 3600);
-      const mins = Math.floor((info.duration % 3600) / 60);
-      const secs = Math.floor(info.duration % 60);
-      setEndValue({
-        hours: hrs.toString().padStart(2, '0'),
-        minutes: mins.toString().padStart(2, '0'),
-        seconds: secs.toString().padStart(2, '0'),
-      });
+    if (info) {
+      if (info.duration && typeof info.duration === 'number') {
+        const hrs = Math.floor(info.duration / 3600);
+        const mins = Math.floor((info.duration % 3600) / 60);
+        const secs = Math.floor(info.duration % 60);
+        setEndValue({
+          hours: hrs.toString().padStart(2, '0'),
+          minutes: mins.toString().padStart(2, '0'),
+          seconds: secs.toString().padStart(2, '0'),
+        });
+      }
+
+      if (info.sizes) {
+        const availableQualities = ['2160', '1440', '1080', '720', '480', '360'].filter(
+          (q) => Boolean(info.sizes[q])
+        );
+        if (availableQualities.length > 0 && !info.sizes[quality]) {
+          setQuality(availableQualities[0]);
+        }
+      }
     }
   }, [info]);
 
@@ -339,20 +350,26 @@ export default function Downloader() {
                           { val: '480', label: 'SD', labelFull: '480p' },
                           { val: '360', label: 'Low', labelFull: '360p' }
                         ].map(opt => {
+                          const isAvailable = Boolean(info.sizes?.[opt.val]);
                           const size = info.sizes?.[opt.val] ? `${(info.sizes[opt.val] / 1024 / 1024).toFixed(1)} MB` : '';
                           const isActive = quality === opt.val;
                           return (
                             <button
                               key={opt.val}
+                              disabled={!isAvailable}
                               onClick={() => setQuality(opt.val)}
                               className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-lg border transition-all ${
-                                isActive 
-                                  ? 'bg-zinc-800 border-zinc-500 text-zinc-100' 
-                                  : 'bg-zinc-900/50 border-zinc-800/50 text-zinc-500 hover:bg-zinc-800 hover:border-zinc-700 hover:text-zinc-300'
+                                !isAvailable
+                                  ? 'bg-zinc-950/40 border-zinc-900/60 text-zinc-700 cursor-not-allowed opacity-40'
+                                  : isActive 
+                                    ? 'bg-zinc-800 border-zinc-500 text-zinc-100 shadow-sm' 
+                                    : 'bg-zinc-900/50 border-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:border-zinc-700 hover:text-zinc-200'
                               }`}
                             >
                               <span className="font-medium text-xs">{opt.labelFull}</span>
-                              {size && <span className="text-[9px] opacity-75 mt-0.5">{size}</span>}
+                              <span className="text-[9px] opacity-75 mt-0.5 min-h-[14px]">
+                                {isAvailable ? size : 'Unavailable'}
+                              </span>
                             </button>
                           );
                         })}

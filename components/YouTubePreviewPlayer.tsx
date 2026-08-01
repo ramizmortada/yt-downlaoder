@@ -40,16 +40,15 @@ export default function YouTubePreviewPlayer({ videoId, onSetStart, onSetEnd, lo
   const [duration, setDuration] = useState(0);
   const [isSeeking, setIsSeeking] = useState(false);
 
-  // Trigger loop start when loopRange is set
+  // Seek to start position when loopRange changes without auto-playing
   useEffect(() => {
     if (loopRange && playerRef.current && typeof playerRef.current.seekTo === 'function') {
       try {
         playerRef.current.seekTo(loopRange.start, true);
-        playerRef.current.playVideo();
-        setIsPlaying(true);
+        setCurrentTime(loopRange.start);
       } catch (e) {}
     }
-  }, [loopRange]);
+  }, [loopRange?.start, loopRange?.end]);
 
   useEffect(() => {
     let isMounted = true;
