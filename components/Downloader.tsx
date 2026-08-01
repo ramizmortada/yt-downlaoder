@@ -6,7 +6,25 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Search, Music, Video, Loader2, Download, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Search, Music, Video, Loader2, Download, CheckCircle2, ArrowRight, Scissors, AlertCircle } from 'lucide-react';
+import TimeSegmentPicker, { TimeValue } from './TimeSegmentPicker';
+
+const timeValueToSeconds = (val: TimeValue): number => {
+  const h = parseInt(val.hours || '0', 10);
+  const m = parseInt(val.minutes || '0', 10);
+  const s = parseInt(val.seconds || '0', 10);
+  return h * 3600 + m * 60 + s;
+};
+
+const formatSecondsToHHMMSS = (totalSeconds: number): string => {
+  const hrs = Math.floor(totalSeconds / 3600);
+  const mins = Math.floor((totalSeconds % 3600) / 60);
+  const secs = Math.floor(totalSeconds % 60);
+  if (hrs > 0) {
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+};
 
 export default function Downloader() {
   const [url, setUrl] = useState('');
@@ -18,6 +36,66 @@ export default function Downloader() {
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
   const [abortController, setAbortController] = useState<AbortController | null>(null);
+
+  // Time segment clipping state
+  const [isClipping, setIsClipping] = useState(false);
+  const [startValue, setStartValue] = useState<TimeValue>({ hours: '00', minutes: '00', seconds: '00' });
+  const [endValue, setEndValue] = useState<TimeValue>({ hours: '00', minutes: '00', seconds: '00' });
+
+  // Calculate clipping validation
+  const startSeconds = timeValueToSeconds(startValue);
+  const endSeconds = timeValueToSeconds(endValue);
+  const totalDuration = typeof info?.duration === 'number' ? info.duration : null;
+
+  let clippingError: string | null = null;
+  let isStartInvalid = false;
+  let isEndInvalid = false;
+
+  if (isClipping) {
+    if (totalDuration !== null && startSeconds >= totalDuration) {
+      clippingError = `Start time cannot exceed video duration (${formatSecondsToHHMMSS(totalDuration)})`;
+      isStartInvalid = true;
+    } else if (totalDuration !== null && endSeconds > totalDuration) {
+      clippingError = `End time (${formatSecondsToHHMMSS(endSeconds)}) exceeds video duration (${formatSecondsToHHMMSS(totalDuration)})`;
+      isEndInvalid = true;
+    } else if (startSeconds >= endSeconds) {
+      clippingError = `Start time must be earlier than End time`;
+      isStartInvalid = true;
+      isEndInvalid = true;
+    }
+  }
+
+  // Pre-fill end time when video duration is available
+  useEffect(() => {
+    if (info?.duration && typeof info.duration === 'number') {
+      const hrs = Math.floor(info.duration / 3600);
+      const mins = Math.floor((info.duration % 3600) / 60);
+      const secs = Math.floor(info.duration % 60);
+      setEndValue({
+        hours: hrs.toString().padStart(2, '0'),
+        minutes: mins.toString().padStart(2, '0'),
+        seconds: secs.toString().padStart(2, '0'),
+      });
+    }
+  }, [info]);
+
+  const handleResetClipping = () => {
+    setStartValue({ hours: '00', minutes: '00', seconds: '00' });
+    if (info?.duration && typeof info.duration === 'number') {
+      const hrs = Math.floor(info.duration / 3600);
+      const mins = Math.floor((info.duration % 3600) / 60);
+      const secs = Math.floor(info.duration % 60);
+      setEndValue({
+        hours: hrs.toString().padStart(2, '0'),
+        minutes: mins.toString().padStart(2, '0'),
+        seconds: secs.toString().padStart(2, '0'),
+      });
+    } else {
+      setEndValue({ hours: '00', minutes: '00', seconds: '00' });
+    }
+  };
+
+
 
   // Load from local storage on mount
   useEffect(() => {
@@ -56,7 +134,11 @@ export default function Downloader() {
 
   const handleCancel = () => {
     if (abortController) {
-      abortController.abort();
+      try {
+        abortController.abort();
+      } catch (e) {
+        // Ignore any abort error
+      }
       setAbortController(null);
     }
     setDownloading(false);
@@ -75,7 +157,7 @@ export default function Downloader() {
 
     setDownloading(true);
     setProgress(0);
-    setStatusText('Starting download to server...');
+    setStatusText(isClipping ? 'Extracting video clip from YouTube...' : 'Starting download to server...');
 
     try {
       const res = await fetch('/api/download', {
@@ -85,7 +167,9 @@ export default function Downloader() {
           url,
           isAudio,
           quality,
-          type: 'mp4'
+          type: 'mp4',
+          startTime: isClipping ? `${startValue.hours}:${startValue.minutes}:${startValue.seconds}` : undefined,
+          endTime: isClipping ? `${endValue.hours}:${endValue.minutes}:${endValue.seconds}` : undefined,
         }),
         signal: controller.signal
       });
@@ -111,7 +195,6 @@ export default function Downloader() {
               if (event.type === 'progress') {
                 setProgress(event.data.percentage ?? 0);
                 
-                // YouTube downloads Video and Audio as separate tracks, so we show the extension to clarify why it restarts
                 let trackType = 'stream';
                 if (event.data.filename) {
                   const ext = event.data.filename.split('.').pop();
@@ -135,12 +218,19 @@ export default function Downloader() {
         }
       }
     } catch (err: any) {
-      if (err.name === 'AbortError') {
+      const isAborted = controller.signal.aborted || 
+                        err?.name === 'AbortError' || 
+                        (typeof err === 'string' && err.toLowerCase().includes('user cancelled')) ||
+                        err?.message?.toLowerCase().includes('aborted') ||
+                        err?.message?.toLowerCase().includes('cancelled');
+
+      if (isAborted) {
         console.log('Download aborted by user');
       } else {
-        alert('Download failed: ' + err.message);
-        setDownloading(false);
+        alert('Download failed: ' + (err?.message || err));
       }
+      setDownloading(false);
+      setAbortController(null);
     }
   };
 
@@ -250,11 +340,61 @@ export default function Downloader() {
                   )}
                 </AnimatePresence>
 
+                {/* Segment Clipping Section */}
+                <div className="w-full flex flex-col gap-2 shrink-0 border-t border-zinc-800/80 pt-3">
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setIsClipping(!isClipping)}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-zinc-300 hover:text-white transition-colors"
+                    >
+                      <Scissors className={`w-3.5 h-3.5 ${isClipping ? 'text-amber-400' : 'text-zinc-400'}`} />
+                      <span>Crop / Clip Segment</span>
+                      {isClipping && <span className="text-[10px] bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded font-mono">ON</span>}
+                    </button>
+                    {isClipping && (
+                      <button
+                        type="button"
+                        onClick={handleResetClipping}
+                        className="text-[10px] text-zinc-500 hover:text-zinc-300 underline transition-colors"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+
+                  <AnimatePresence>
+                    {isClipping && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="flex flex-col gap-2 overflow-hidden"
+                      >
+                        <div className="grid grid-cols-2 gap-2">
+                          <TimeSegmentPicker label="Start Time" value={startValue} onChange={setStartValue} hasError={isStartInvalid} />
+                          <TimeSegmentPicker label="End Time" value={endValue} onChange={setEndValue} hasError={isEndInvalid} />
+                        </div>
+                        {clippingError ? (
+                          <div className="flex items-center gap-1.5 text-[11px] text-red-400 bg-red-950/40 border border-red-900/60 rounded-lg p-2 font-medium">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-400" />
+                            <span>{clippingError}</span>
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-zinc-500 ml-1">
+                            Click directly on <span className="text-zinc-300 font-semibold font-mono">MM</span> or <span className="text-zinc-300 font-semibold font-mono">SS</span> to edit. Arrow keys adjust values.
+                          </p>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
                 {/* Download Button */}
                 <div className="flex flex-col gap-2.5 shrink-0">
                   <Button 
                     onClick={startDownload} 
-                    disabled={downloading || loading}
+                    disabled={(!downloading && loading) || (!downloading && isClipping && Boolean(clippingError))}
                     className={`w-full rounded-xl h-10 text-sm font-medium transition-colors relative overflow-hidden disabled:opacity-50 ${
                       downloading 
                         ? 'bg-zinc-800 text-zinc-100 hover:bg-zinc-700 border border-zinc-700' 

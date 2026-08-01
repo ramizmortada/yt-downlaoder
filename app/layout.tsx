@@ -29,8 +29,9 @@ export default function RootLayout({
     <html
       lang="en"
       className={cn("dark", "h-full", "antialiased", geistSans.variable, geistMono.variable, "font-sans", inter.variable)}
+      suppressHydrationWarning
     >
-      <body className="h-full overflow-hidden flex flex-col">{children}</body>
+      <body className="h-full overflow-hidden flex flex-col" suppressHydrationWarning>{children}</body>
     </html>
   );
 }
