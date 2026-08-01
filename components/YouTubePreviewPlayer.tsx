@@ -8,6 +8,7 @@ interface YouTubePreviewPlayerProps {
   videoId: string;
   onSetStart: (val: TimeValue) => void;
   onSetEnd: (val: TimeValue) => void;
+  clipRange?: { start: number; end: number } | null;
   loopRange?: { start: number; end: number } | null;
   videoAspectRatio?: number;
 }
@@ -31,7 +32,7 @@ const formatDisplayTime = (totalSeconds: number): string => {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
-export default function YouTubePreviewPlayer({ videoId, onSetStart, onSetEnd, loopRange, videoAspectRatio = 16/9 }: YouTubePreviewPlayerProps) {
+export default function YouTubePreviewPlayer({ videoId, onSetStart, onSetEnd, clipRange, loopRange, videoAspectRatio = 16/9 }: YouTubePreviewPlayerProps) {
   const playerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<any>(null);
@@ -161,9 +162,13 @@ export default function YouTubePreviewPlayer({ videoId, onSetStart, onSetEnd, lo
   // Global keyboard shortcuts for video seeking
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if user is typing in an input or textarea
-      const tag = document.activeElement?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') {
+      // Ignore if user is typing in a text input or textarea
+      const active = document.activeElement as HTMLInputElement;
+      if (
+        active &&
+        (active.tagName === 'TEXTAREA' || 
+        (active.tagName === 'INPUT' && active.type !== 'range' && active.type !== 'button' && active.type !== 'checkbox'))
+      ) {
         return;
       }
 
@@ -178,6 +183,35 @@ export default function YouTubePreviewPlayer({ videoId, onSetStart, onSetEnd, lo
         seekAmount = -1;
       } else if (e.key === 'f' || e.key === 'F') {
         seekAmount = 1;
+      } else if (e.key === 'i' || e.key === 'I') {
+        e.preventDefault();
+        const current = playerRef.current.getCurrentTime();
+        onSetStart({
+          hours: Math.floor(current / 3600).toString().padStart(2, '0'),
+          minutes: Math.floor((current % 3600) / 60).toString().padStart(2, '0'),
+          seconds: Math.floor(current % 60).toString().padStart(2, '0')
+        });
+        return;
+      } else if (e.key === 'o' || e.key === 'O') {
+        e.preventDefault();
+        const current = playerRef.current.getCurrentTime();
+        onSetEnd({
+          hours: Math.floor(current / 3600).toString().padStart(2, '0'),
+          minutes: Math.floor((current % 3600) / 60).toString().padStart(2, '0'),
+          seconds: Math.floor(current % 60).toString().padStart(2, '0')
+        });
+        return;
+      } else if (e.key === ' ') {
+        e.preventDefault();
+        if (playerRef.current && typeof playerRef.current.getPlayerState === 'function') {
+          const state = playerRef.current.getPlayerState();
+          if (state === 1) { // PLAYING
+            playerRef.current.pauseVideo();
+          } else {
+            playerRef.current.playVideo();
+          }
+        }
+        return;
       }
 
       if (seekAmount !== 0) {
@@ -291,7 +325,28 @@ export default function YouTubePreviewPlayer({ videoId, onSetStart, onSetEnd, lo
       {/* Custom Control Bar */}
       <div className="flex flex-col gap-2 bg-zinc-900 border border-zinc-800 rounded-xl p-2.5">
         {/* Scrub Slider */}
-        <div className="relative w-full flex items-center h-3 group">
+        <div className="relative w-full flex items-center h-3 group cursor-pointer">
+          {/* Base Track */}
+          <div className="absolute left-0 right-0 h-1.5 bg-zinc-800 rounded-lg pointer-events-none" />
+
+          {/* Highlight Segment */}
+          {clipRange && duration > 0 && clipRange.end > clipRange.start && (
+            <div 
+              className="absolute h-1.5 bg-amber-400/30 rounded-lg pointer-events-none"
+              style={{
+                left: `${(clipRange.start / duration) * 100}%`,
+                width: `${((Math.min(clipRange.end, duration) - clipRange.start) / duration) * 100}%`
+              }}
+            />
+          )}
+
+          {/* Custom Thumb / Playhead */}
+          <div 
+            className="absolute h-3 w-3 bg-amber-400 rounded-full shadow-sm pointer-events-none -ml-1.5 transition-transform z-10"
+            style={{ left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+          />
+
+          {/* Invisible Interactive Range Input */}
           <input
             type="range"
             min={0}
@@ -309,7 +364,7 @@ export default function YouTubePreviewPlayer({ videoId, onSetStart, onSetEnd, lo
               setIsSeeking(false);
               handleSeek(parseFloat((e.target as HTMLInputElement).value));
             }}
-            className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-400 focus:outline-none z-10"
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
           />
         </div>
 

@@ -307,6 +307,7 @@ export default function Downloader() {
                     videoId={info.id}
                     onSetStart={handleSetStartFromPlayer}
                     onSetEnd={handleSetEndFromPlayer}
+                    clipRange={(isClipping && !clippingError && endSeconds > startSeconds) ? { start: startSeconds, end: endSeconds } : null}
                     loopRange={loopRange}
                     videoAspectRatio={info.width && info.height ? info.width / info.height : 16/9}
                   />
